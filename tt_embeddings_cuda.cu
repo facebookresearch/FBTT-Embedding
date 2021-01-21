@@ -53,7 +53,7 @@ inline void cuda_gemm_batched_fp32_fp32(
     int batch_count) {
   cublasHandle_t handle = at::cuda::getCurrentCUDABlasHandle();
   cublasSetStream(handle, c10::cuda::getCurrentCUDAStream());
-  TORCH_CUDABLAS_CHECK(cublasGemmBatchedEx(
+  cublasGemmBatchedEx(
       handle,
       transa,
       transb,
@@ -73,7 +73,7 @@ inline void cuda_gemm_batched_fp32_fp32(
       ldc,
       batch_count,
       CUDA_R_32F,
-      CUBLAS_GEMM_DEFAULT));
+      CUBLAS_GEMM_DEFAULT);
 }
 
 __global__ void init_batch_gemm_backward_2T_kernel(
