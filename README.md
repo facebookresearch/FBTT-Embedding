@@ -4,6 +4,7 @@ In addition, our implementation includes a software cache to store a portion of 
 
 ## Installing FBTT-Embedding
 
+* The implementation was compiled and tested with PyTorch 1.6 and above, with CUDA 10.1.
 * To install the library, run setup.py install
     In order to get the best performance, specify -gencode for nvcc in the setup.py (line 24). The corresponding compiler settings for each architecture can be found in CUDA Toolkit Documentation, for example
     Volta https://docs.nvidia.com/cuda/volta-compatibility-guide/index.html
