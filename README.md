@@ -11,7 +11,7 @@ In addition, our implementation includes a software cache to store a portion of 
     Pascal https://docs.nvidia.com/cuda/pascal-compatibility-guide/index.html
 * Dependence
     cub https://nvlabs.github.io/cub/
-* A sample run of the code, run benchmark.py. A sample output is shown below
+* A sample run of the code, run tt_embeddings_benchmark.py. A sample output is shown below
 
 ``` bash
 INFO:root:sparse: True, optimizer: sgd
