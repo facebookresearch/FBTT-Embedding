@@ -29,7 +29,7 @@ tnn_utils = CUDAExtension(
                                     "-gencode=arch=compute_70,code=\"sm_70\"",]
                         }
 )
-setup(name='tt_emb',
+setup(name='tt_embeddings',
     description='tt_embeddings',
     packages=find_packages(),
     ext_modules=[tnn_utils],
