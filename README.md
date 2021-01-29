@@ -1,6 +1,8 @@
 # FBTT-Embedding
-FBTT-Embedding library provides functionality to compress sparse embedding tables commonly usedin machine learning models such as recommendation and natural language processing. The library can be used as a direct replacement to [PyTorch’s EmbeddingBag][https://pytorch.org/docs/stable/generated/torch.nn.EmbeddingBag.html] functionality. It provides the forward and backward propagation functionality same as PyTorch’s EmbeddingBag with only difference of compression.
+FBTT-Embedding library provides functionality to compress sparse embedding tables commonly usedin machine learning models such as recommendation and natural language processing. The library can be used as a direct replacement to [PyTorch’s EmbeddingBag](https://pytorch.org/docs/stable/generated/torch.nn.EmbeddingBag.html) functionality. It provides the forward and backward propagation functionality same as PyTorch’s EmbeddingBag with only difference of compression.
 In addition, our implementation includes a software cache to store a portion of the entries in the embedding tables (or “bag”s) in decompressed format for faster lookup and process removing the need for decompressing and compressing the entries every-time it is accessed during the program execution of training or inference.
+
+Read more at ["TT-Rec: Tensor Train Compression for Deep Learning Recommendation Models"](https://arxiv.org/abs/2101.11714), accepted and to appear in the Proceedings of Conference on Machine Learning and Systems, [MLSys 2021](https://mlsys.org/).
 
 ## Installing FBTT-Embedding
 
