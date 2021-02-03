@@ -9,8 +9,7 @@ import random
 from typing import Dict, List, Optional, Tuple
 from enum import Enum, unique
 
-# pyre-fixme[21]
-import deeplearning.fbtt_embedding.tt_embeddings as tt_embeddings
+import tt_embeddings
 import numpy as np
 import torch
 from torch import nn
