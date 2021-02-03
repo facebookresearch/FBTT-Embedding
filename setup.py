@@ -7,7 +7,7 @@ from setuptools import setup, find_packages
 from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 tnn_utils = CUDAExtension(
-                        name='tt_emb',
+                        name='tt_embeddings',
                         sources=['tt_embeddings.cpp',
                             'tt_embeddings_cuda.cu',
                         ],
