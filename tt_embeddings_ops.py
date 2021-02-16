@@ -22,10 +22,6 @@ class OptimType(Enum):
     )
     LAMB = "lamb"
     ADAM = "adam"
-    # approx refers to that gradients to the same row are applied in sequence
-    # instead of first coalescing gradients then apply together
-    APPROX_ADAGRAD = "adagrad"
-    APPROX_ROWWISE_ADAGRAD = "approx_row_wise_adagrad"
     EXACT_ADAGRAD = "exact_adagrad"
     EXACT_ROWWISE_ADAGRAD = "exact_row_wise_adagrad"
     LARS_SGD = "lars_sgd"
@@ -547,7 +543,7 @@ class TTEmbeddingBag(torch.nn.Module):
             if self.sparse and optimizer not in (OptimType.SGD, OptimType.EXACT_SGD):
                 optimizer_state_shape = (
                     (cache_size, self.embedding_dim)
-                    if optimizer == OptimType.APPROX_ADAGRAD
+                    if optimizer == OptimType.EXACT_ADAGRAD
                     else (cache_size)
                 )
                 self.register_buffer(

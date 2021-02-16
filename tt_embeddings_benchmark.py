@@ -163,7 +163,7 @@ def main(
     if optimizer == "sgd":
         optimizer = OptimType.SGD
     else:
-        optimizer = OptimType.APPROX_ADAGRAD
+        optimizer = OptimType.EXACT_ADAGRAD
     tt_emb = TTEmbeddingBag(
         num_embeddings=num_embeddings,
         embedding_dim=embedding_dim,
