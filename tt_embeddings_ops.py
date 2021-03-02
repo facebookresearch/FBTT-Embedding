@@ -418,7 +418,7 @@ class TTEmbeddingBag(torch.nn.Module):
         use_cache: bool = True,
         cache_size: int = 0,
         hashtbl_size: int = 0,
-        weight_dist: str = "uniform",
+        weight_dist: str = "approx-uniform",
         enforce_embedding_dim: bool = False,
     ) -> None:
         super(TTEmbeddingBag, self).__init__()
@@ -726,15 +726,15 @@ class TTEmbeddingBag(torch.nn.Module):
                 ]
                 shapes.append(core_shape)
             W0 = _gen_head(shapes[0], sigma=0.01)
-            W0 = W0 / scale
+            W0 = W0 * scale
             W0 = W0.transpose([1, 0, 2, 3]).reshape((self.tt_p_shapes[0], -1))
             W0 = W0.astype(np.float32)
             W1 = _gen_mid(shapes[1], sigma=0.01)
-            W1 = W1 / scale
+            W1 = W1 * scale
             W1 = W1.astype(np.float32)
             W1 = W1.transpose([1, 0, 2, 3]).reshape((self.tt_p_shapes[1], -1))
             W2 = _gen_tail(shapes[2], sigma=0.01)
-            W2 = W2 / scale
+            W2 = W2 * scale
             W2 = W2.astype(np.float32)
             W2 = W2.transpose([1, 0, 2, 3]).reshape((self.tt_p_shapes[2], -1))
             self.tt_cores[0].data = torch.tensor(W0, requires_grad=True)
