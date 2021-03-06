@@ -38,7 +38,7 @@ INFO:root:TTEmbeddingBag FWD-BWD time/nnz: 0.416 usecs, GFLOPS: 2657.631, BW: 18
 * `use_cache (bool)` — if True, a software cache will be used to store the most-frequently-accessed embedding vectors.
 * `cache_size (int)` — The maximum number of embedding vectors to be stored in the cache.
 * `hashtbl_size (int`) — The maximum number of entries in the hash table for frequency count.
-* `weight_dist (str)` — “uniform”, “normal”, “approx-uniform”, “approx-normal”. When using “uniform” or “normal”, the weights of TT cores will be i.i.d from the specified distribution. When using “approx-uniform” or “approx-normal”, the TT cores are initialized in a way that the entries of full embedding table follow the specified distribution.
+* `weight_dist (str)` — “uniform”, “naive-uniform”, “approx-uniform”, "normal", “approx-normal”. When using “uniform” or “normal”, the weights of TT cores will be i.i.d from the specified distribution. When using “approx-uniform” or “approx-normal”, the TT cores are initialized in a way that the entries of full embedding table follow the specified distribution.
 
 ### Initialization
 The initialization of TT-Emb is similar to Pytorch EmbeddingBag
