@@ -418,7 +418,7 @@ class TTEmbeddingBag(torch.nn.Module):
         use_cache: bool = True,
         cache_size: int = 0,
         hashtbl_size: int = 0,
-        weight_dist: str = "approx-uniform",
+        weight_dist: str = "approx-normal",
         enforce_embedding_dim: bool = False,
     ) -> None:
         super(TTEmbeddingBag, self).__init__()
@@ -575,7 +575,7 @@ class TTEmbeddingBag(torch.nn.Module):
         )
 
     def reset_parameters(self, weight_dist: str) -> None:  # noqa C901
-        assert weight_dist in ["uniform", "normal", "approx-uniform", "approx-normal"]
+        assert weight_dist in ["uniform", "naive-uniform", "normal", "approx-uniform", "approx-normal"]
         if weight_dist == "uniform":
             lamb = 2.0 / (self.num_embeddings + self.embedding_dim)
             stddev = np.sqrt(lamb)
@@ -585,6 +585,9 @@ class TTEmbeddingBag(torch.nn.Module):
             core_stddev = stddev ** (1.0 / self.tt_ndim) * var
             for i in range(self.tt_ndim):
                 torch.nn.init.uniform_(self.tt_cores[i], 0.0, core_stddev)
+        elif weight_dist == "naive-uniform":
+            for i in range(self.tt_ndim):
+                torch.nn.init.uniform_(self.tt_cores[i], 0.0, 1/np.sqrt(self.num_embeddings))
         elif weight_dist == "normal":
             mu = 0.0
             sigma = 1.0 / np.sqrt(self.num_embeddings)
@@ -595,13 +598,7 @@ class TTEmbeddingBag(torch.nn.Module):
         elif weight_dist == "approx-normal":
             mu = 0.0
             sigma = 1.0
-            tt_rank = self.tt_ranks[0]
-            scale = (
-                1.0
-                / np.sqrt(self.num_embeddings)
-                / 3.0
-                / (tt_rank ** (2 / self.tt_ndim))
-            )
+            scale = np.power(1/np.sqrt(3*self.num_embeddings), 1/3)
             for i in range(self.tt_ndim):
                 W = np.random.normal(
                     loc=mu, scale=sigma, size=np.asarray(self.tt_cores[i].shape)
@@ -609,7 +606,7 @@ class TTEmbeddingBag(torch.nn.Module):
                 core_shape = self.tt_cores[i].shape
                 W = W.flatten()
                 for ele in range(W.shape[0]):
-                    while np.abs(W[ele]) < 1:
+                    while np.abs(W[ele]) < 2:
                         W[ele] = np.random.normal(loc=mu, scale=sigma, size=[1]).astype(
                             np.float32
                         )
