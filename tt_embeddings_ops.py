@@ -86,8 +86,8 @@ def tt_matrix_to_full(
     tt_ndim = len(tt_p_shapes)
     if len(tt_ranks) == tt_ndim - 1:
         tt_ranks = [1] + tt_ranks + [1]
+    tt_cores_ = []
     if tt_permute is not None:
-        tt_cores_ = []
         for i, t in enumerate(tt_cores):
             size_tt = [tt_ranks[i], tt_p_shapes[i], tt_q_shapes[i], tt_ranks[i + 1]]
             size_tt_permute = [0] * 4
@@ -95,7 +95,8 @@ def tt_matrix_to_full(
                 size_tt_permute[i] = size_tt[tt_permute[i]]
             tt_cores_.append(t.view(*size_tt_permute).permute(*tt_permute).contiguous())
     else:
-        tt_cores_ = tt_cores
+        for t in tt_cores:
+            tt_cores_.append(torch.squeeze(t))
     for k in range(tt_ndim):
         assert tt_cores_[k].size(0) == tt_ranks[k]
         assert tt_cores_[k].size(1) == tt_p_shapes[k]
@@ -140,6 +141,7 @@ class TTLookupFunction(torch.autograd.Function):
         nnz_cached: int,
         indices: torch.Tensor,
         rowidx: torch.Tensor,
+        tableidx: torch.Tensor,
         optimizer: OptimType,
         learning_rate: float,
         eps: float,
@@ -164,11 +166,12 @@ class TTLookupFunction(torch.autograd.Function):
         ctx.nnz_cached = nnz_cached
         batch_count = 1000
         ctx.save_for_backward(
-            L, indices, rowidx, cache_locations, cache_optimizer_state, cache_weight
+            L, indices, rowidx, tableidx, cache_locations, cache_optimizer_state, cache_weight
         )
         # pyre-fixme[16]
         output = tt_embeddings.tt_forward(
             batch_count,
+            ctx.tt_cores[0].size(0),  # num_tables
             B,
             D,
             tt_p_shapes,
@@ -178,6 +181,7 @@ class TTLookupFunction(torch.autograd.Function):
             nnz_tt,
             indices,
             rowidx,
+            tableidx,
             list(ctx.tt_cores),
         )
         if nnz_cached > 0:
@@ -200,6 +204,7 @@ class TTLookupFunction(torch.autograd.Function):
             L,
             indices,
             rowidx,
+            tableidx,
             cache_locations,
             cache_optimizer_state,
             cache_weight,
@@ -219,6 +224,7 @@ class TTLookupFunction(torch.autograd.Function):
                     ctx.nnz_tt,
                     indices,
                     rowidx,
+                    tableidx,
                     d_output,
                     list(ctx.tt_cores),
                 )
@@ -246,6 +252,7 @@ class TTLookupFunction(torch.autograd.Function):
                     ctx.nnz_tt,
                     indices,
                     rowidx,
+                    tableidx,
                     d_output,
                     ctx.optimizer_state,
                     list(ctx.tt_cores),
@@ -275,6 +282,7 @@ class TTLookupFunction(torch.autograd.Function):
                     None,  # indices
                     None,  # offsets
                     None,  # rowidx
+                    None,  # tableidx
                     None,  # optimizer
                     None,  # learning_rate
                     None,  # eps
@@ -298,6 +306,7 @@ class TTLookupFunction(torch.autograd.Function):
                 ctx.nnz_tt,
                 indices,
                 rowidx,
+                tableidx,
                 d_output,
                 list(ctx.tt_cores),
             )
@@ -326,6 +335,7 @@ class TTLookupFunction(torch.autograd.Function):
                     None,  # indices
                     None,  # offsets
                     None,  # rowidx
+                    None,  # tableidx
                     None,  # optimizer
                     None,  # learning_rate
                     None,  # eps
@@ -401,11 +411,16 @@ def suggested_tt_shapes(  # noqa C901
     return factors
 
 
-class TTEmbeddingBag(torch.nn.Module):
-    __constants__ = ["num_embeddings", "embedding_dim", "tt_shape", "tt_rank"]
+class TableBatchedTTEmbeddingBag(torch.nn.Module):
+    """
+    TT embedding bag that supports looking up multiple tables in one pass.
+    It has to satisfy the constraint that all tables have the same num_embeddings and embedding_dim
+    """
+    __constants__ = ["num_tables", "num_embeddings", "embedding_dim", "tt_shape", "tt_rank"]
 
     def __init__(
         self,
+        num_tables: int,
         num_embeddings: int,
         embedding_dim: int,
         tt_ranks: List[int],
@@ -415,16 +430,18 @@ class TTEmbeddingBag(torch.nn.Module):
         learning_rate: float = 0.1,
         eps: float = 1.0e-10,
         sparse: bool = True,
-        use_cache: bool = True,
+        use_cache: bool = False,
         cache_size: int = 0,
         hashtbl_size: int = 0,
         weight_dist: str = "approx-normal",
         enforce_embedding_dim: bool = False,
     ) -> None:
-        super(TTEmbeddingBag, self).__init__()
+        super(TableBatchedTTEmbeddingBag, self).__init__()
         assert torch.cuda.is_available()
+        assert num_tables > 0
         assert num_embeddings > 0
         assert embedding_dim > 0
+        assert num_tables == 1 or not use_cache, "cannot use cache when num_tables != 1"
         self.tt_p_shapes: List[int] = (
             suggested_tt_shapes(num_embeddings, len(tt_ranks) + 1)
             if tt_p_shapes is None
@@ -450,6 +467,7 @@ class TTEmbeddingBag(torch.nn.Module):
         assert all(v > 0 for v in tt_ranks)
         assert np.prod(np.array(self.tt_p_shapes)) >= num_embeddings
         assert np.prod(np.array(self.tt_q_shapes)) == embedding_dim
+        self.num_tables = num_tables
         self.tt_ndim = len(tt_ranks) + 1
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
@@ -485,6 +503,7 @@ class TTEmbeddingBag(torch.nn.Module):
                 torch.nn.Parameter(
                     torch.empty(
                         [
+                            self.num_tables,
                             self.tt_p_shapes[i],
                             self.tt_ranks[i]
                             * self.tt_q_shapes[i]
@@ -566,6 +585,7 @@ class TTEmbeddingBag(torch.nn.Module):
         self.warmup = True
 
     def full_weight(self) -> torch.Tensor:
+        assert self.num_tables == 1, "full_weight() only supported for num_tables == 1 for now"
         return tt_matrix_to_full(
             self.tt_p_shapes,
             self.tt_q_shapes,
@@ -712,6 +732,7 @@ class TTEmbeddingBag(torch.nn.Module):
                 return B
 
             assert self.tt_ndim == 3
+            assert self.num_tables == 1, "approx_uniform only supported for num_tables == 1"
             scale = 1.0 / (np.sqrt(self.num_embeddings) ** (1.0 / 3.0))
             shapes = []
             for i in range(self.tt_ndim):
@@ -724,16 +745,16 @@ class TTEmbeddingBag(torch.nn.Module):
                 shapes.append(core_shape)
             W0 = _gen_head(shapes[0], sigma=0.01)
             W0 = W0 * scale
-            W0 = W0.transpose([1, 0, 2, 3]).reshape((self.tt_p_shapes[0], -1))
+            W0 = W0.transpose([1, 0, 2, 3]).reshape((self.num_tables, self.tt_p_shapes[0], -1))
             W0 = W0.astype(np.float32)
             W1 = _gen_mid(shapes[1], sigma=0.01)
             W1 = W1 * scale
             W1 = W1.astype(np.float32)
-            W1 = W1.transpose([1, 0, 2, 3]).reshape((self.tt_p_shapes[1], -1))
+            W1 = W1.transpose([1, 0, 2, 3]).reshape((self.num_tables, self.tt_p_shapes[1], -1))
             W2 = _gen_tail(shapes[2], sigma=0.01)
             W2 = W2 * scale
             W2 = W2.astype(np.float32)
-            W2 = W2.transpose([1, 0, 2, 3]).reshape((self.tt_p_shapes[2], -1))
+            W2 = W2.transpose([1, 0, 2, 3]).reshape((self.num_tables, self.tt_p_shapes[2], -1))
             self.tt_cores[0].data = torch.tensor(W0, requires_grad=True)
             self.tt_cores[1].data = torch.tensor(W1, requires_grad=True)
             self.tt_cores[2].data = torch.tensor(W2, requires_grad=True)
@@ -777,12 +798,14 @@ class TTEmbeddingBag(torch.nn.Module):
         (
             indices,
             rowidx,
+            tableidx,
             num_tt_indices,
             cache_locations,
             # pyre-fixme[16]
         ) = tt_embeddings.preprocess_indices_sync(
             indices,
             offsets,
+            self.num_tables,
             self.warmup,
             # pyre-fixme[16]
             self.hashtbl,
@@ -792,7 +815,8 @@ class TTEmbeddingBag(torch.nn.Module):
         num_cached = indices.numel() - num_tt_indices
         # pyre-fixme[16]
         output = TTLookupFunction.apply(
-            offsets.numel() - 1,
+            # self.num_tables should be able to divide offsets.numel() - 1
+            (offsets.numel() - 1) // self.num_tables,
             self.embedding_dim,
             self.tt_p_shapes,
             self.tt_q_shapes,
@@ -803,6 +827,7 @@ class TTEmbeddingBag(torch.nn.Module):
             num_cached,
             indices,
             rowidx,
+            tableidx,
             self.optimizer,
             self.learning_rate,
             self.eps,
@@ -827,3 +852,48 @@ class TTEmbeddingBag(torch.nn.Module):
         if self.use_cache:
             params.append(self.cache_weight)
         return params
+
+
+class TTEmbeddingBag(TableBatchedTTEmbeddingBag):
+    """
+    TTEmbedding lookup for exactly one table
+    """
+    def __init__(
+        self,
+        num_embeddings: int,
+        embedding_dim: int,
+        tt_ranks: List[int],
+        tt_p_shapes: Optional[List[int]] = None,
+        tt_q_shapes: Optional[List[int]] = None,
+        optimizer: OptimType = OptimType.SGD,
+        learning_rate: float = 0.1,
+        eps: float = 1.0e-10,
+        sparse: bool = True,
+        use_cache: bool = True,
+        cache_size: int = 0,
+        hashtbl_size: int = 0,
+        weight_dist: str = "approx-normal",
+        enforce_embedding_dim: bool = False,
+    ) -> None:
+        super().__init__(
+            1,  # num_tables = 1
+            num_embeddings,
+            embedding_dim,
+            tt_ranks,
+            tt_p_shapes,
+            tt_q_shapes,
+            optimizer,
+            learning_rate,
+            eps,
+            sparse,
+            use_cache,
+            cache_size,
+            hashtbl_size,
+            weight_dist,
+            enforce_embedding_dim,
+        )
+
+    def forward(
+        self, indices: torch.Tensor, offsets: torch.Tensor, warmup: bool = True
+    ) -> torch.Tensor:
+        return super().forward(indices, offsets, warmup)[0]  # there should be only one table

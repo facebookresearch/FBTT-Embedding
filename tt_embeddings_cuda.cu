@@ -19,8 +19,8 @@ LICENSE file in the root directory of this source tree.
 #include <mutex>
 #include "cub/device/device_partition.cuh"
 #include "cub/device/device_radix_sort.cuh"
-#include "tt_cuda_utils.cuh"
 #include "hashtbl_cuda_utils.cuh"
+#include "tt_cuda_utils.cuh"
 
 using namespace at;
 
@@ -80,12 +80,13 @@ __global__ void init_batch_gemm_backward_2T_kernel(
     int32_t N,
     const int64_t* __restrict__ colidx,
     const int64_t* __restrict__ rowidx,
+    const int64_t* __restrict__ tableidx,
     const int64_t* __restrict__ L,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_1,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_0,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_1,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_0,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_1,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> d_output,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> d_output,
     int32_t* __restrict__ tt_idx,
     float** __restrict__ a0_ptr,
     float** __restrict__ b0_ptr,
@@ -97,17 +98,18 @@ __global__ void init_batch_gemm_backward_2T_kernel(
   if (n < N) {
     auto cidx = __ldg(&colidx[n]);
     auto ridx = __ldg(&rowidx[n]);
+    auto tidx = __ldg(&tableidx[n]);
     int32_t tt_idx_0 = cidx / L[0];
     cidx = cidx % L[0];
     int32_t tt_idx_1 = cidx / L[1];
     tt_idx[0 * N + n] = tt_idx_0;
     tt_idx[1 * N + n] = tt_idx_1;
-    float* d_output_ptr = (float*)&(d_output[ridx][0]);
-    a0_ptr[0 * N + n] = (float*)&(tt_cores_0[tt_idx_0][0]);
+    float* d_output_ptr = (float*)&(d_output[tidx][ridx][0]);
+    a0_ptr[0 * N + n] = (float*)&(tt_cores_0[tidx][tt_idx_0][0]);
     b0_ptr[0 * N + n] = d_output_ptr;
     c0_ptr[0 * N + n] = (float*)&(tr_tt_cores_1[n][0]);
     a1_ptr[0 * N + n] = d_output_ptr;
-    b1_ptr[0 * N + n] = (float*)&(tt_cores_1[tt_idx_1][0]);
+    b1_ptr[0 * N + n] = (float*)&(tt_cores_1[tidx][tt_idx_1][0]);
     c1_ptr[0 * N + n] = (float*)&(tr_tt_cores_0[n][0]);
   }
 }
@@ -116,15 +118,16 @@ __global__ void init_batch_gemm_backward_3T_kernel(
     int32_t N,
     const int64_t* __restrict__ colidx,
     const int64_t* __restrict__ rowidx,
+    const int64_t* __restrict__ tableidx,
     const int64_t* __restrict__ L,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_1,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_2,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_0,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_1,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_2,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_0,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_1,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_2,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> d_output,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> d_output,
     int32_t* __restrict__ tt_idx,
     float** __restrict__ a_ptr,
     float** __restrict__ b_ptr,
@@ -139,6 +142,7 @@ __global__ void init_batch_gemm_backward_3T_kernel(
   if (n < N) {
     auto cidx = __ldg(&colidx[n]);
     auto ridx = __ldg(&rowidx[n]);
+    auto tidx = __ldg(&tableidx[n]);
     int32_t tt_idx_0 = cidx / L[0];
     cidx = cidx % L[0];
     int32_t tt_idx_1 = cidx / L[1];
@@ -148,9 +152,9 @@ __global__ void init_batch_gemm_backward_3T_kernel(
     tt_idx[1 * N + n] = tt_idx_1;
     tt_idx[2 * N + n] = tt_idx_2;
     float* tr_0_ptr = (float*)&(tr_0[n][0]);
-    float* d_output_ptr = (float*)&(d_output[ridx][0]);
-    float* tt_cores_0_ptr = (float*)&(tt_cores_0[tt_idx_0][0]);
-    float* tt_cores_1_ptr = (float*)&(tt_cores_1[tt_idx_1][0]);
+    float* d_output_ptr = (float*)&(d_output[tidx][ridx][0]);
+    float* tt_cores_0_ptr = (float*)&(tt_cores_0[tidx][tt_idx_0][0]);
+    float* tt_cores_1_ptr = (float*)&(tt_cores_1[tidx][tt_idx_1][0]);
     a_ptr[0 * N + n] = tt_cores_1_ptr;
     b_ptr[0 * N + n] = tt_cores_0_ptr;
     c_ptr[0 * N + n] = tr_0_ptr;
@@ -164,7 +168,7 @@ __global__ void init_batch_gemm_backward_3T_kernel(
     b0_ptr[1 * N + n] = d_output_ptr;
     c0_ptr[1 * N + n] = (float*)&(tr_tt_cores_2[n][0]);
     a1_ptr[1 * N + n] = d_output_ptr;
-    b1_ptr[1 * N + n] = (float*)&(tt_cores_2[tt_idx_2][0]);
+    b1_ptr[1 * N + n] = (float*)&(tt_cores_2[tidx][tt_idx_2][0]);
     c1_ptr[1 * N + n] = tr_0_ptr;
   }
 }
@@ -173,18 +177,19 @@ __global__ void init_batch_gemm_backward_4T_kernel(
     int32_t N,
     const int64_t* __restrict__ colidx,
     const int64_t* __restrict__ rowidx,
+    const int64_t* __restrict__ tableidx,
     const int64_t* __restrict__ L,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_1,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_2,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_3,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_0,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_1,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_2,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_3,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_0,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_1,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_2,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores_3,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_0,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_1,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> d_output,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> d_output,
     int32_t* __restrict__ tt_idx,
     float** __restrict__ a_ptr,
     float** __restrict__ b_ptr,
@@ -199,6 +204,7 @@ __global__ void init_batch_gemm_backward_4T_kernel(
   if (n < N) {
     auto cidx = __ldg(&colidx[n]);
     auto ridx = __ldg(&rowidx[n]);
+    auto tidx = __ldg(&tableidx[n]);
     int32_t tt_idx_0 = cidx / L[0];
     cidx = cidx % L[0];
     int32_t tt_idx_1 = cidx / L[1];
@@ -212,10 +218,10 @@ __global__ void init_batch_gemm_backward_4T_kernel(
     tt_idx[3 * N + n] = tt_idx_3;
     float* tr_0_ptr = (float*)&(tr_0[n][0]);
     float* tr_1_ptr = (float*)&(tr_1[n][0]);
-    float* d_output_ptr = (float*)&(d_output[ridx][0]);
-    float* tt_cores_0_ptr = (float*)&(tt_cores_0[tt_idx_0][0]);
-    float* tt_cores_1_ptr = (float*)&(tt_cores_1[tt_idx_1][0]);
-    float* tt_cores_2_ptr = (float*)&(tt_cores_2[tt_idx_2][0]);
+    float* d_output_ptr = (float*)&(d_output[tidx][ridx][0]);
+    float* tt_cores_0_ptr = (float*)&(tt_cores_0[tidx][tt_idx_0][0]);
+    float* tt_cores_1_ptr = (float*)&(tt_cores_1[tidx][tt_idx_1][0]);
+    float* tt_cores_2_ptr = (float*)&(tt_cores_2[tidx][tt_idx_2][0]);
     a_ptr[0 * N + n] = tt_cores_1_ptr;
     b_ptr[0 * N + n] = tt_cores_0_ptr;
     c_ptr[0 * N + n] = tr_0_ptr;
@@ -238,7 +244,7 @@ __global__ void init_batch_gemm_backward_4T_kernel(
     b0_ptr[2 * N + n] = d_output_ptr;
     c0_ptr[2 * N + n] = (float*)&(tr_tt_cores_3[n][0]);
     a1_ptr[2 * N + n] = d_output_ptr;
-    b1_ptr[2 * N + n] = (float*)&(tt_cores_3[tt_idx[3 * N + n]][0]);
+    b1_ptr[2 * N + n] = (float*)&(tt_cores_3[tidx][tt_idx[3 * N + n]][0]);
     c1_ptr[2 * N + n] = tr_1_ptr;
   }
 }
@@ -248,6 +254,7 @@ void init_batch_gemm_backward_cuda(
     int32_t N,
     const int64_t* __restrict__ colidx,
     const int64_t* __restrict__ rowidx,
+    const int64_t* __restrict__ tableidx,
     const int64_t* __restrict__ L,
     const std::vector<Tensor>& tt_cores,
     const std::vector<Tensor>& tr_tt_cores,
@@ -274,12 +281,13 @@ void init_batch_gemm_backward_cuda(
         N,
         colidx,
         rowidx,
+        tableidx,
         L,
-        tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
+        tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[1].packed_accessor32<float, 3, RestrictPtrTraits>(),
         tr_tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr_tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        d_output.packed_accessor32<float, 2, RestrictPtrTraits>(),
+        d_output.packed_accessor32<float, 3, RestrictPtrTraits>(),
         tt_idx,
         a0_ptr,
         b0_ptr,
@@ -296,15 +304,16 @@ void init_batch_gemm_backward_cuda(
         N,
         colidx,
         rowidx,
+        tableidx,
         L,
-        tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
+        tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[1].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[2].packed_accessor32<float, 3, RestrictPtrTraits>(),
         tr_tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr_tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr_tt_cores[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        d_output.packed_accessor32<float, 2, RestrictPtrTraits>(),
+        d_output.packed_accessor32<float, 3, RestrictPtrTraits>(),
         tt_idx,
         a_ptr,
         b_ptr,
@@ -324,18 +333,19 @@ void init_batch_gemm_backward_cuda(
         N,
         colidx,
         rowidx,
+        tableidx,
         L,
-        tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[3].packed_accessor32<float, 2, RestrictPtrTraits>(),
+        tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[1].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[2].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[3].packed_accessor32<float, 3, RestrictPtrTraits>(),
         tr_tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr_tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr_tt_cores[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr_tt_cores[3].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        d_output.packed_accessor32<float, 2, RestrictPtrTraits>(),
+        d_output.packed_accessor32<float, 3, RestrictPtrTraits>(),
         tt_idx,
         a_ptr,
         b_ptr,
@@ -353,13 +363,15 @@ __global__ void update_d_tt_cores_kernel(
     int32_t N,
     int32_t D,
     const int32_t* __restrict__ tt_idx,
+    const int64_t* __restrict__ tableidx,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_tt_cores,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> d_tt_cores) {
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> d_tt_cores) {
   int32_t n = blockIdx.x * blockDim.y + threadIdx.y;
   if (n < N) {
     auto idx = __ldg(&tt_idx[n]);
+    auto tidx = __ldg(&tableidx[n]);
     for (int32_t d = threadIdx.x; d < D; d += blockDim.x) {
-      atomicAdd(&(d_tt_cores[idx][d]), tr_tt_cores[n][d]);
+      atomicAdd(&(d_tt_cores[tidx][idx][d]), tr_tt_cores[n][d]);
     }
   }
 }
@@ -367,34 +379,40 @@ __global__ void update_d_tt_cores_kernel(
 __global__ void update_tt_cores_sgd_kernel(
     int32_t B,
     int32_t D,
+    int32_t num_tables,
     float learning_rate,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> d_tt_cores,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores) {
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> d_tt_cores,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores) {
   int32_t b = blockIdx.x * blockDim.y + threadIdx.y;
   if (b >= B) {
     return;
   }
-  for (int32_t d = threadIdx.x; d < D; d += blockDim.x) {
-    tt_cores[b][d] -= learning_rate * d_tt_cores[b][d];
+  for (int32_t i = 0; i < num_tables; i++) {
+    for (int32_t d = threadIdx.x; d < D; d += blockDim.x) {
+      tt_cores[i][b][d] -= learning_rate * d_tt_cores[i][b][d];
+    }
   }
 }
 
 __global__ void update_tt_cores_adagrad_kernel(
     int32_t B,
     int32_t D,
+    int32_t num_tables,
     float learning_rate,
     float eps,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> d_tt_cores,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> optimizer_state,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores) {
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> d_tt_cores,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> optimizer_state,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores) {
   int32_t b = blockIdx.x * blockDim.y + threadIdx.y;
   if (b >= B) {
     return;
   }
-  for (int32_t d = threadIdx.x; d < D; d += blockDim.x) {
-    optimizer_state[b][d] += d_tt_cores[b][d] * d_tt_cores[b][d];
-    tt_cores[b][d] -=
-        learning_rate * d_tt_cores[b][d] / (sqrt(optimizer_state[b][d]) + eps);
+  for (int32_t i = 0; i < num_tables; i++) {
+    for (int32_t d = threadIdx.x; d < D; d += blockDim.x) {
+      optimizer_state[i][b][d] += d_tt_cores[i][b][d] * d_tt_cores[i][b][d];
+      tt_cores[i][b][d] -=
+          learning_rate * d_tt_cores[i][b][d] / (sqrt(optimizer_state[i][b][d]) + eps);
+    }
   }
 }
 
@@ -411,19 +429,21 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
     int32_t nnz,
     Tensor colidx,
     Tensor rowidx,
+    Tensor tableidx,
     Tensor d_output,
     c10::optional<std::vector<Tensor>> optimizer_state,
     std::vector<Tensor>& tt_cores) {
   at::cuda::OptionalCUDAGuard device_guard;
   device_guard.set_index(d_output.get_device());
   int32_t T = tt_p_shapes.size();
+  int32_t num_tables = tt_cores[0].size(0);
 
   std::vector<Tensor> d_tt_cores;
   std::vector<Tensor> tr_tt_cores;
   for (int32_t t = 0; t < T; ++t) {
     d_tt_cores.push_back(at::zeros_like(tt_cores[t]));
     tr_tt_cores.push_back(
-        at::empty({batch_count, tt_cores[t].size(1)}, tt_cores[t].options()));
+        at::empty({batch_count, tt_cores[t].size(2)}, tt_cores[t].options()));
   }
   if (nnz == 0) {
     return d_tt_cores;
@@ -489,6 +509,7 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
         N,
         &(colidx.data_ptr<int64_t>()[start_idx]),
         &(rowidx.data_ptr<int64_t>()[start_idx]),
+        &(tableidx.data_ptr<int64_t>()[start_idx]),
         L.data_ptr<int64_t>(),
         tt_cores,
         tr_tt_cores,
@@ -539,7 +560,7 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
           (void**)&(c0_ptr[t * N]),
           n[t],
           N);
-      int32_t D_0 = tt_cores[t + 1].size(1);
+      int32_t D_0 = tt_cores[t + 1].size(2);
       int32_t tx_0 = std::min(1024, D_0);
       int32_t ty_0 = 1024 / tx_0;
       update_d_tt_cores_kernel<<<
@@ -550,8 +571,9 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
           N,
           D_0,
           &(tt_idx.data_ptr<int32_t>()[(t + 1) * N]),
+          &(tableidx.data_ptr<int64_t>()[start_idx]),
           tr_tt_cores[t + 1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-          d_tt_cores[t + 1].packed_accessor32<float, 2, RestrictPtrTraits>());
+          d_tt_cores[t + 1].packed_accessor32<float, 3, RestrictPtrTraits>());
       cuda_gemm_batched_fp32_fp32(
           CUBLAS_OP_T,
           CUBLAS_OP_N,
@@ -568,7 +590,7 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
           k[t],
           N);
       if (t == 0) {
-        int32_t D_1 = tt_cores[0].size(1);
+        int32_t D_1 = tt_cores[0].size(2);
         int32_t tx_1 = std::min(1024, D_1);
         int32_t ty_1 = 1024 / tx_1;
         update_d_tt_cores_kernel<<<
@@ -579,15 +601,16 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
             N,
             D_1,
             &(tt_idx.data_ptr<int32_t>()[t * N]),
+            &(tableidx.data_ptr<int64_t>()[start_idx]),
             tr_tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-            d_tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>());
+            d_tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>());
       }
     } // for (int32_t t = T - 2; t >=0 ; --t)
   } // for (int32_t start_idx = 0; start_idx < nnz; start_idx += batch_count)
   if (optim == OPTIM_ADAGRAD) {
     for (int32_t t = 0; t < T; ++t) {
-      int32_t y_size = tt_cores[t].size(0);
-      int32_t x_size = tt_cores[t].size(1);
+      int32_t y_size = tt_cores[t].size(1);
+      int32_t x_size = tt_cores[t].size(2);
       int32_t tx = std::min(1024, y_size);
       int32_t ty = 1024 / tx;
       update_tt_cores_adagrad_kernel<<<
@@ -597,17 +620,18 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
           c10::cuda::getCurrentCUDAStream()>>>(
           y_size,
           x_size,
+          num_tables,
           learning_rate,
           eps,
-          d_tt_cores[t].packed_accessor32<float, 2, RestrictPtrTraits>(),
+          d_tt_cores[t].packed_accessor32<float, 3, RestrictPtrTraits>(),
           (*optimizer_state)[t]
-              .packed_accessor32<float, 2, RestrictPtrTraits>(),
-          tt_cores[t].packed_accessor32<float, 2, RestrictPtrTraits>());
+              .packed_accessor32<float, 3, RestrictPtrTraits>(),
+          tt_cores[t].packed_accessor32<float, 3, RestrictPtrTraits>());
     }
   } else if (optim == OPTIM_SGD) {
     for (int32_t t = 0; t < T; ++t) {
-      int32_t y_size = tt_cores[t].size(0);
-      int32_t x_size = tt_cores[t].size(1);
+      int32_t y_size = tt_cores[t].size(1);
+      int32_t x_size = tt_cores[t].size(2);
       int32_t tx = std::min(1024, y_size);
       int32_t ty = 1024 / tx;
       update_tt_cores_sgd_kernel<<<
@@ -617,9 +641,10 @@ std::vector<Tensor> tt_embeddings_backward_cuda(
           c10::cuda::getCurrentCUDAStream()>>>(
           y_size,
           x_size,
+          num_tables,
           learning_rate,
-          d_tt_cores[t].packed_accessor32<float, 2, RestrictPtrTraits>(),
-          tt_cores[t].packed_accessor32<float, 2, RestrictPtrTraits>());
+          d_tt_cores[t].packed_accessor32<float, 3, RestrictPtrTraits>(),
+          tt_cores[t].packed_accessor32<float, 3, RestrictPtrTraits>());
     }
   }
 
@@ -636,6 +661,7 @@ std::vector<Tensor> tt_embeddings_backward_dense_cuda(
     int32_t nnz,
     Tensor colidx,
     Tensor rowidx,
+    Tensor tableidx,
     Tensor d_output,
     std::vector<Tensor>& tt_cores) {
   return tt_embeddings_backward_cuda(
@@ -651,6 +677,7 @@ std::vector<Tensor> tt_embeddings_backward_dense_cuda(
       nnz,
       colidx,
       rowidx,
+      tableidx,
       d_output,
       c10::nullopt,
       tt_cores);
@@ -667,6 +694,7 @@ void tt_embeddings_backward_sgd_cuda(
     int32_t nnz,
     Tensor colidx,
     Tensor rowidx,
+    Tensor tableidx,
     Tensor d_output,
     std::vector<Tensor>& tt_cores) {
   tt_embeddings_backward_cuda(
@@ -682,6 +710,7 @@ void tt_embeddings_backward_sgd_cuda(
       nnz,
       colidx,
       rowidx,
+      tableidx,
       d_output,
       c10::nullopt,
       tt_cores);
@@ -699,6 +728,7 @@ void tt_embeddings_backward_adagrad_cuda(
     int32_t nnz,
     Tensor colidx,
     Tensor rowidx,
+    Tensor tableidx,
     Tensor d_output,
     std::vector<Tensor>& optimizer_state,
     std::vector<Tensor>& tt_cores) {
@@ -715,6 +745,7 @@ void tt_embeddings_backward_adagrad_cuda(
       nnz,
       colidx,
       rowidx,
+      tableidx,
       d_output,
       optimizer_state,
       tt_cores);
@@ -724,20 +755,22 @@ __global__ void init_batch_gemm_forward_2T_kernel(
     int N,
     const int64_t* __restrict__ L,
     const int64_t* __restrict__ colidx,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_1,
+    const int64_t* __restrict__ tableidx,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_0,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_1,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_0,
     float** __restrict__ a_ptr,
     float** __restrict__ b_ptr,
     float** __restrict__ c_ptr) {
   int32_t n = blockIdx.x * blockDim.x + threadIdx.x;
   if (n < N) {
+    auto tidx = __ldg(&tableidx[n]);
     auto cidx = __ldg(&colidx[n]);
     auto tt_idx_0 = cidx / L[0];
     cidx = cidx % L[0];
     auto tt_idx_1 = cidx / L[1];
-    a_ptr[0 * N + n] = (float*)&(tt_cores_1[tt_idx_1][0]);
-    b_ptr[0 * N + n] = (float*)&(tt_cores_0[tt_idx_0][0]);
+    a_ptr[0 * N + n] = (float*)&(tt_cores_1[tidx][tt_idx_1][0]);
+    b_ptr[0 * N + n] = (float*)&(tt_cores_0[tidx][tt_idx_0][0]);
     c_ptr[0 * N + n] = (float*)&(tr_0[n][0]);
   }
 }
@@ -746,9 +779,10 @@ __global__ void init_batch_gemm_forward_3T_kernel(
     int N,
     const int64_t* __restrict__ L,
     const int64_t* __restrict__ colidx,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_1,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_2,
+    const int64_t* __restrict__ tableidx,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_0,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_1,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_2,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_0,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_1,
     float** __restrict__ a_ptr,
@@ -756,6 +790,7 @@ __global__ void init_batch_gemm_forward_3T_kernel(
     float** __restrict__ c_ptr) {
   int32_t n = blockIdx.x * blockDim.x + threadIdx.x;
   if (n < N) {
+    auto tidx = __ldg(&tableidx[n]);
     auto cidx = __ldg(&colidx[n]);
     auto tt_idx_0 = cidx / L[0];
     cidx = cidx % L[0];
@@ -763,10 +798,10 @@ __global__ void init_batch_gemm_forward_3T_kernel(
     cidx = cidx % L[1];
     auto tt_idx_2 = cidx / L[2];
     float* tr_0_ptr = (float*)&(tr_0[n][0]);
-    a_ptr[0 * N + n] = (float*)&(tt_cores_1[tt_idx_1][0]);
-    b_ptr[0 * N + n] = (float*)&(tt_cores_0[tt_idx_0][0]);
+    a_ptr[0 * N + n] = (float*)&(tt_cores_1[tidx][tt_idx_1][0]);
+    b_ptr[0 * N + n] = (float*)&(tt_cores_0[tidx][tt_idx_0][0]);
     c_ptr[0 * N + n] = tr_0_ptr;
-    a_ptr[1 * N + n] = (float*)&(tt_cores_2[tt_idx_2][0]);
+    a_ptr[1 * N + n] = (float*)&(tt_cores_2[tidx][tt_idx_2][0]);
     b_ptr[1 * N + n] = tr_0_ptr;
     c_ptr[1 * N + n] = (float*)&(tr_1[n][0]);
   }
@@ -776,10 +811,11 @@ __global__ void init_batch_gemm_forward_4T_kernel(
     int N,
     const int64_t* __restrict__ L,
     const int64_t* __restrict__ colidx,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_0,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_1,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_2,
-    PackedTensorAccessor32<float, 2, RestrictPtrTraits> tt_cores_3,
+    const int64_t* __restrict__ tableidx,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_0,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_1,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_2,
+    PackedTensorAccessor32<float, 3, RestrictPtrTraits> tt_cores_3,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_0,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_1,
     PackedTensorAccessor32<float, 2, RestrictPtrTraits> tr_2,
@@ -788,6 +824,7 @@ __global__ void init_batch_gemm_forward_4T_kernel(
     float** __restrict__ c_ptr) {
   int32_t n = blockIdx.x * blockDim.x + threadIdx.x;
   if (n < N) {
+    auto tidx = __ldg(&tableidx[n]);
     auto cidx = __ldg(&colidx[n]);
     auto tt_idx_0 = cidx / L[0];
     cidx = cidx % L[0];
@@ -798,13 +835,13 @@ __global__ void init_batch_gemm_forward_4T_kernel(
     auto tt_idx_3 = cidx / L[3];
     float* tr_0_ptr = (float*)&(tr_0[n][0]);
     float* tr_1_ptr = (float*)&(tr_1[n][0]);
-    a_ptr[0 * N + n] = (float*)&(tt_cores_1[tt_idx_1][0]);
-    b_ptr[0 * N + n] = (float*)&(tt_cores_0[tt_idx_0][0]);
+    a_ptr[0 * N + n] = (float*)&(tt_cores_1[tidx][tt_idx_1][0]);
+    b_ptr[0 * N + n] = (float*)&(tt_cores_0[tidx][tt_idx_0][0]);
     c_ptr[0 * N + n] = tr_0_ptr;
-    a_ptr[1 * N + n] = (float*)&(tt_cores_2[tt_idx_2][0]);
+    a_ptr[1 * N + n] = (float*)&(tt_cores_2[tidx][tt_idx_2][0]);
     b_ptr[1 * N + n] = tr_0_ptr;
     c_ptr[1 * N + n] = tr_1_ptr;
-    a_ptr[2 * N + n] = (float*)&(tt_cores_3[tt_idx_3][0]);
+    a_ptr[2 * N + n] = (float*)&(tt_cores_3[tidx][tt_idx_3][0]);
     b_ptr[2 * N + n] = tr_1_ptr;
     c_ptr[2 * N + n] = (float*)&(tr_2[n][0]);
   }
@@ -815,6 +852,7 @@ void init_batch_gemm_forward_cuda(
     int32_t N,
     const int64_t* __restrict__ L,
     const int64_t* __restrict__ colidx,
+    const int64_t* __restrict__ tableidx,
     const std::vector<Tensor>& tt_cores,
     const std::vector<Tensor>& tr,
     float** __restrict__ a_ptr,
@@ -831,8 +869,9 @@ void init_batch_gemm_forward_cuda(
         N,
         L,
         colidx,
-        tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
+        tableidx,
+        tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[1].packed_accessor32<float, 3, RestrictPtrTraits>(),
         tr[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         a_ptr,
         b_ptr,
@@ -846,9 +885,10 @@ void init_batch_gemm_forward_cuda(
         N,
         L,
         colidx,
-        tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
+        tableidx,
+        tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[1].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[2].packed_accessor32<float, 3, RestrictPtrTraits>(),
         tr[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
         a_ptr,
@@ -863,10 +903,11 @@ void init_batch_gemm_forward_cuda(
         N,
         L,
         colidx,
-        tt_cores[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
-        tt_cores[3].packed_accessor32<float, 2, RestrictPtrTraits>(),
+        tableidx,
+        tt_cores[0].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[1].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[2].packed_accessor32<float, 3, RestrictPtrTraits>(),
+        tt_cores[3].packed_accessor32<float, 3, RestrictPtrTraits>(),
         tr[0].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr[1].packed_accessor32<float, 2, RestrictPtrTraits>(),
         tr[2].packed_accessor32<float, 2, RestrictPtrTraits>(),
@@ -878,8 +919,10 @@ void init_batch_gemm_forward_cuda(
 
 __global__ void reduce_output_kernel(
     int32_t N,
+    int32_t B,
     int32_t D,
     const int64_t* __restrict__ rowidx,
+    const int64_t* __restrict__ tableidx,
     const float* __restrict__ tr_last,
     float* __restrict__ output) {
   int32_t indice_id = blockIdx.x * blockDim.y + threadIdx.y;
@@ -890,20 +933,23 @@ __global__ void reduce_output_kernel(
   }
   // check if this warp is responsible for this whole segment.
   bool segment_start =
-      (indice_id == 0 || rowidx[indice_id - 1] != rowidx[indice_id]);
+      (indice_id == 0 || rowidx[indice_id - 1] != rowidx[indice_id] ||
+       tableidx[indice_id - 1] != tableidx[indice_id]);
   if (!segment_start) {
     // don't have *warp* divergence since we launch full warps in blockDim.x,
     // so we can just exit this warp entirely.
     return;
   }
   int64_t row_index = rowidx[indice_id];
+  int64_t table_index = tableidx[indice_id];
   // now, find the end of the segment (and thus the segment length `SL`).
   int32_t SL = 1;
-  while (indice_id + SL < N && rowidx[indice_id + SL] == row_index) {
+  while (indice_id + SL < N && rowidx[indice_id + SL] == row_index &&
+         tableidx[indice_id + SL] == table_index) {
     SL += 1;
   }
   for (int32_t d = threadIdx.x; d * 4 < D; d += blockDim.x) {
-    Vec4T<float> sum(&output[row_index * D + d * 4]);
+    Vec4T<float> sum(&output[table_index * B * D + row_index * D + d * 4]);
     for (int32_t sl = 0; sl < SL; ++sl) {
       Vec4T<float> tr(&tr_last[(indice_id + sl) * D + d * 4]);
       sum.acc.x += tr.acc.x;
@@ -911,12 +957,13 @@ __global__ void reduce_output_kernel(
       sum.acc.z += tr.acc.z;
       sum.acc.w += tr.acc.w;
     }
-    sum.store(&output[row_index * D + d * 4]);
+    sum.store(&output[table_index * B * D + row_index * D + d * 4]);
   }
 }
 
 Tensor tt_embeddings_forward_cuda(
     int32_t batch_count,
+    int32_t num_tables,
     int32_t B,
     int32_t D,
     const std::vector<int>& tt_p_shapes,
@@ -926,11 +973,12 @@ Tensor tt_embeddings_forward_cuda(
     int32_t nnz,
     Tensor colidx,
     Tensor rowidx,
+    Tensor tableidx,
     const std::vector<Tensor>& tt_cores) {
   at::cuda::OptionalCUDAGuard device_guard;
   device_guard.set_index(rowidx.get_device());
   int32_t T = tt_p_shapes.size();
-  auto output = at::zeros({B, D}, tt_cores[0].options().dtype(at::kFloat));
+  auto output = at::zeros({num_tables, B, D}, tt_cores[0].options().dtype(at::kFloat));
   if (nnz == 0) {
     return output;
   }
@@ -980,6 +1028,7 @@ Tensor tt_embeddings_forward_cuda(
         N,
         L.data_ptr<int64_t>(),
         &(colidx.data_ptr<int64_t>()[start_idx]),
+        &(tableidx.data_ptr<int64_t>()[start_idx]),
         tt_cores,
         tr,
         a_ptr,
@@ -1013,8 +1062,10 @@ Tensor tt_embeddings_forward_cuda(
         0,
         c10::cuda::getCurrentCUDAStream()>>>(
         N,
+        B,
         D,
         &(rowidx.data_ptr<int64_t>()[start_idx]),
+        &(tableidx.data_ptr<int64_t>()[start_idx]),
         tr[T - 2].data_ptr<float>(),
         output.data_ptr<float>());
   } // for (int start_idx = 0; start_idx < nnz; start_idx += batch_count)
@@ -1153,6 +1204,8 @@ void prefetch_cached_weights_cuda(
   float** b_ptr = (float**)b_ptr_tensor.data_ptr<int64_t>();
   float** c_ptr = (float**)c_ptr_tensor.data_ptr<int64_t>();
 
+  Tensor tableidx = zeros_like(cache_freq_sorted_hashtbl);
+
   for (int32_t start_idx = 0; start_idx < nnz; start_idx += batch_count) {
     int32_t end_idx =
         start_idx + batch_count < nnz ? start_idx + batch_count : nnz;
@@ -1162,6 +1215,7 @@ void prefetch_cached_weights_cuda(
         N,
         L.data_ptr<int64_t>(),
         &(cache_freq_sorted_hashtbl.data_ptr<int64_t>()[start_idx]),
+        &(tableidx.data_ptr<int64_t>()[start_idx]),
         tt_cores,
         tr,
         a_ptr,
@@ -1282,15 +1336,18 @@ void cache_populate_cuda(
 
 __global__ void compute_rowidx_kernel(
     int32_t B,
+    int32_t num_tables,
     const int64_t* __restrict__ offsets,
-    int64_t* __restrict__ rowidx) {
+    int64_t* __restrict__ rowidx,
+    int64_t* __restrict__ tableidx) {
   int32_t b = blockIdx.x * blockDim.y + threadIdx.y;
-  if (b < B) {
+  if (b < B * num_tables) {
     int64_t colidx_start = offsets[b];
     int64_t colidx_end = offsets[b + 1];
     int32_t L = colidx_end - colidx_start;
     for (int32_t l = threadIdx.x; l < L; l += blockDim.x) {
-      rowidx[l + colidx_start] = b;
+      rowidx[l + colidx_start] = b % B;
+      tableidx[l + colidx_start] = b / B;
     }
   }
 }
@@ -1316,34 +1373,42 @@ __global__ void cache_lookup_kernel(
   }
 }
 
-std::tuple<Tensor, Tensor, int32_t, c10::optional<Tensor>>
+std::tuple<Tensor, Tensor, Tensor, int32_t, c10::optional<Tensor>>
 preprocess_indices_sync_cuda(
     Tensor colidx,
     Tensor offsets,
+    int32_t num_tables,
     bool warmup,
     Tensor hashtbl,
     Tensor cache_state) {
   at::cuda::OptionalCUDAGuard device_guard;
   device_guard.set_index(colidx.get_device());
   auto rowidx = empty_like(colidx);
+  auto tableidx = empty_like(colidx);
   if (rowidx.numel() == 0) {
-    return {colidx, rowidx, rowidx.numel(), c10::nullopt};
+    return {colidx, rowidx, tableidx, rowidx.numel(), c10::nullopt};
   }
 
-  int32_t B = offsets.numel() - 1;
+  int32_t B = (offsets.numel() - 1) / num_tables;
   int32_t N = colidx.numel();
+  int32_t num_rows = offsets.numel() - 1;
 
   int32_t tx = 8;
   int32_t ty = 32;
   compute_rowidx_kernel<<<
-      div_round_up(B, ty),
+      div_round_up(num_rows, ty),
       dim3(tx, ty),
       0,
       c10::cuda::getCurrentCUDAStream()>>>(
-      B, offsets.data_ptr<int64_t>(), rowidx.data_ptr<int64_t>());
+      B,
+      num_tables,
+      offsets.data_ptr<int64_t>(),
+      rowidx.data_ptr<int64_t>(),
+      tableidx.data_ptr<int64_t>());
 
-  if (warmup) {
-    return {colidx, rowidx, rowidx.numel(), c10::nullopt};
+  if (warmup || num_tables != 1) {
+    // if in warmup phase or num_tables != 1, we do not lookup cache
+    return {colidx, rowidx, tableidx, rowidx.numel(), c10::nullopt};
   } else {
     auto partitioned_colidx = empty_like(colidx);
     auto partitioned_rowidx = empty_like(rowidx);
@@ -1420,10 +1485,12 @@ preprocess_indices_sync_cuda(
         cudaMemcpyDeviceToHost,
         at::cuda::getCurrentCUDAStream());
     cudaStreamSynchronize(at::cuda::getCurrentCUDAStream());
-    return {partitioned_colidx,
-            partitioned_rowidx,
-            N_tt_indices,
-            partitioned_cache_locations};
+    return {
+        partitioned_colidx,
+        partitioned_rowidx,
+        tableidx,
+        N_tt_indices,
+        partitioned_cache_locations};
   }
 }
 

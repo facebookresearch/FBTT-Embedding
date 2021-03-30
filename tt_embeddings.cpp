@@ -12,6 +12,7 @@ using namespace at;
 
 Tensor tt_embeddings_forward_cuda(
     int32_t batch_count,
+    int32_t num_tables,
     int32_t B,
     int32_t D,
     const std::vector<int>& tt_p_shapes,
@@ -21,6 +22,7 @@ Tensor tt_embeddings_forward_cuda(
     int32_t nnz,
     Tensor indices,
     Tensor rowidx,
+    Tensor tableidx,
     const std::vector<Tensor>& tt_cores);
 
 std::vector<Tensor> tt_embeddings_backward_dense_cuda(
@@ -33,6 +35,7 @@ std::vector<Tensor> tt_embeddings_backward_dense_cuda(
     int32_t nnz,
     Tensor indices,
     Tensor offsets,
+    Tensor tableidx,
     Tensor d_output,
     std::vector<Tensor>& tt_cores);
 
@@ -47,6 +50,7 @@ void tt_embeddings_backward_sgd_cuda(
     int32_t nnz,
     Tensor indices,
     Tensor offsets,
+    Tensor tableidx,
     Tensor d_output,
     std::vector<Tensor>& tt_cores);
 
@@ -62,6 +66,7 @@ void tt_embeddings_backward_adagrad_cuda(
     int32_t nnz,
     Tensor indices,
     Tensor offsets,
+    Tensor tableidx,
     Tensor d_output,
     std::vector<Tensor>& optimizer_state,
     std::vector<Tensor>& tt_cores);
@@ -80,10 +85,11 @@ void cache_populate_cuda(
     Tensor cache_state,
     Tensor cache_weight);
 
-std::tuple<Tensor, Tensor, int32_t, c10::optional<Tensor>>
+std::tuple<Tensor, Tensor, Tensor, int32_t, c10::optional<Tensor>>
 preprocess_indices_sync_cuda(
     Tensor colidx,
     Tensor offsets,
+    int32_t num_tables,
     bool warmup,
     Tensor hashtbl,
     Tensor cache_state);
