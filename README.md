@@ -112,5 +112,34 @@ tt_emb = TTEmbeddingBag(
 
 During forward propagation, the access frequency of embedding vectors will be updated. However, the cache will only be updated when `tt_emb.cache_populate()` is called. The cached rows are determined by the access frequency of the embedding vectors, and the value of each embedding vector would be initialized from TT cores.
 
+### TableBatchedTTEmbeddingBag
+
+Apart from TTEmbeddingBag demonstrated above, there's also a TableBatchedTTEmbeddingBag which groups the lookup operation together for multiple TT embedding tables. It can be more efficient than creating multiple instances of TTEmbeddingBags when each of the TTEmbeddingBags has little computation involved.
+
+To use that, you just need to initialize it as below
+
+``` python
+tt_emb = TableBatchedTTEmbeddingBag(
+        num_tables=100,
+        num_embeddings=1000000,
+        embedding_dim=64,
+        tt_p_shapes=[120, 90, 110],
+        tt_q_shapes=[4, 4, 4],
+        tt_ranks=[12, 14],
+        sparse=False,
+        use_cache=False,
+        weight_dist="uniform"
+    )
+```
+
+The above creates 100 TT embedding tables with the same dimensions underlying. The only additional argument that needs to be passed is `num_tables`
+
+Currently there are some limitations to TableBatchedTTEmbeddingBag.
+
+* The mutiple tables in TableBatchedTTEmbeddingBag must share the same dimensions.
+* No support for software cache yet.
+* No support for "approx-uniform" weight init yet.
+* No support for expanding to full weight yet.
+
 ## License
 FBTT-Embedding is MIT licensed, as found in the LICENSE file.
