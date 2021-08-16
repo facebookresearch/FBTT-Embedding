@@ -6,13 +6,14 @@
 
 import logging
 import random
-from typing import Dict, List, Optional, Tuple
 from enum import Enum, unique
+from typing import Dict, List, Optional, Tuple
 
-import tt_embeddings
 import numpy as np
 import torch
+import tt_embeddings
 from torch import nn
+
 
 @unique
 class OptimType(Enum):
@@ -166,7 +167,13 @@ class TTLookupFunction(torch.autograd.Function):
         ctx.nnz_cached = nnz_cached
         batch_count = 1000
         ctx.save_for_backward(
-            L, indices, rowidx, tableidx, cache_locations, cache_optimizer_state, cache_weight
+            L,
+            indices,
+            rowidx,
+            tableidx,
+            cache_locations,
+            cache_optimizer_state,
+            cache_weight,
         )
         # pyre-fixme[16]
         output = tt_embeddings.tt_forward(
@@ -416,7 +423,14 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
     TT embedding bag that supports looking up multiple tables in one pass.
     It has to satisfy the constraint that all tables have the same num_embeddings and embedding_dim
     """
-    __constants__ = ["num_tables", "num_embeddings", "embedding_dim", "tt_shape", "tt_rank"]
+
+    __constants__ = [
+        "num_tables",
+        "num_embeddings",
+        "embedding_dim",
+        "tt_shape",
+        "tt_rank",
+    ]
 
     def __init__(
         self,
@@ -585,7 +599,9 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
         self.warmup = True
 
     def full_weight(self) -> torch.Tensor:
-        assert self.num_tables == 1, "full_weight() only supported for num_tables == 1 for now"
+        assert (
+            self.num_tables == 1
+        ), "full_weight() only supported for num_tables == 1 for now"
         return tt_matrix_to_full(
             self.tt_p_shapes,
             self.tt_q_shapes,
@@ -595,7 +611,13 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
         )
 
     def reset_parameters(self, weight_dist: str) -> None:  # noqa C901
-        assert weight_dist in ["uniform", "naive-uniform", "normal", "approx-uniform", "approx-normal"]
+        assert weight_dist in [
+            "uniform",
+            "naive-uniform",
+            "normal",
+            "approx-uniform",
+            "approx-normal",
+        ]
         if weight_dist == "uniform":
             lamb = 2.0 / (self.num_embeddings + self.embedding_dim)
             stddev = np.sqrt(lamb)
@@ -607,7 +629,9 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
                 torch.nn.init.uniform_(self.tt_cores[i], 0.0, core_stddev)
         elif weight_dist == "naive-uniform":
             for i in range(self.tt_ndim):
-                torch.nn.init.uniform_(self.tt_cores[i], 0.0, 1/np.sqrt(self.num_embeddings))
+                torch.nn.init.uniform_(
+                    self.tt_cores[i], 0.0, 1 / np.sqrt(self.num_embeddings)
+                )
         elif weight_dist == "normal":
             mu = 0.0
             sigma = 1.0 / np.sqrt(self.num_embeddings)
@@ -618,7 +642,7 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
         elif weight_dist == "approx-normal":
             mu = 0.0
             sigma = 1.0
-            scale = np.power(1/np.sqrt(3*self.num_embeddings), 1/3)
+            scale = np.power(1 / np.sqrt(3 * self.num_embeddings), 1 / 3)
             for i in range(self.tt_ndim):
                 W = np.random.normal(
                     loc=mu, scale=sigma, size=np.asarray(self.tt_cores[i].shape)
@@ -732,7 +756,9 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
                 return B
 
             assert self.tt_ndim == 3
-            assert self.num_tables == 1, "approx_uniform only supported for num_tables == 1"
+            assert (
+                self.num_tables == 1
+            ), "approx_uniform only supported for num_tables == 1"
             scale = 1.0 / (np.sqrt(self.num_embeddings) ** (1.0 / 3.0))
             shapes = []
             for i in range(self.tt_ndim):
@@ -745,16 +771,22 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
                 shapes.append(core_shape)
             W0 = _gen_head(shapes[0], sigma=0.01)
             W0 = W0 * scale
-            W0 = W0.transpose([1, 0, 2, 3]).reshape((self.num_tables, self.tt_p_shapes[0], -1))
+            W0 = W0.transpose([1, 0, 2, 3]).reshape(
+                (self.num_tables, self.tt_p_shapes[0], -1)
+            )
             W0 = W0.astype(np.float32)
             W1 = _gen_mid(shapes[1], sigma=0.01)
             W1 = W1 * scale
             W1 = W1.astype(np.float32)
-            W1 = W1.transpose([1, 0, 2, 3]).reshape((self.num_tables, self.tt_p_shapes[1], -1))
+            W1 = W1.transpose([1, 0, 2, 3]).reshape(
+                (self.num_tables, self.tt_p_shapes[1], -1)
+            )
             W2 = _gen_tail(shapes[2], sigma=0.01)
             W2 = W2 * scale
             W2 = W2.astype(np.float32)
-            W2 = W2.transpose([1, 0, 2, 3]).reshape((self.num_tables, self.tt_p_shapes[2], -1))
+            W2 = W2.transpose([1, 0, 2, 3]).reshape(
+                (self.num_tables, self.tt_p_shapes[2], -1)
+            )
             self.tt_cores[0].data = torch.tensor(W0, requires_grad=True)
             self.tt_cores[1].data = torch.tensor(W1, requires_grad=True)
             self.tt_cores[2].data = torch.tensor(W2, requires_grad=True)
@@ -858,6 +890,7 @@ class TTEmbeddingBag(TableBatchedTTEmbeddingBag):
     """
     TTEmbedding lookup for exactly one table
     """
+
     def __init__(
         self,
         num_embeddings: int,
@@ -896,4 +929,6 @@ class TTEmbeddingBag(TableBatchedTTEmbeddingBag):
     def forward(
         self, indices: torch.Tensor, offsets: torch.Tensor, warmup: bool = True
     ) -> torch.Tensor:
-        return super().forward(indices, offsets, warmup)[0]  # there should be only one table
+        return super().forward(indices, offsets, warmup)[
+            0
+        ]  # there should be only one table
