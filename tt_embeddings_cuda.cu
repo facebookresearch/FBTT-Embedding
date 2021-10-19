@@ -410,8 +410,8 @@ __global__ void update_tt_cores_adagrad_kernel(
   for (int32_t i = 0; i < num_tables; i++) {
     for (int32_t d = threadIdx.x; d < D; d += blockDim.x) {
       optimizer_state[i][b][d] += d_tt_cores[i][b][d] * d_tt_cores[i][b][d];
-      tt_cores[i][b][d] -=
-          learning_rate * d_tt_cores[i][b][d] / (sqrt(optimizer_state[i][b][d]) + eps);
+      tt_cores[i][b][d] -= learning_rate * d_tt_cores[i][b][d] /
+          (sqrt(optimizer_state[i][b][d]) + eps);
     }
   }
 }
@@ -978,7 +978,8 @@ Tensor tt_embeddings_forward_cuda(
   at::cuda::OptionalCUDAGuard device_guard;
   device_guard.set_index(rowidx.get_device());
   int32_t T = tt_p_shapes.size();
-  auto output = at::zeros({num_tables, B, D}, tt_cores[0].options().dtype(at::kFloat));
+  auto output =
+      at::zeros({num_tables, B, D}, tt_cores[0].options().dtype(at::kFloat));
   if (nnz == 0) {
     return output;
   }
