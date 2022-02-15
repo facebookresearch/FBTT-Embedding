@@ -1,19 +1,18 @@
 # FBTT-Embedding
-FBTT-Embedding library provides functionality to compress sparse embedding tables commonly usedin machine learning models such as recommendation and natural language processing. The library can be used as a direct replacement to [PyTorch’s EmbeddingBag](https://pytorch.org/docs/stable/generated/torch.nn.EmbeddingBag.html) functionality. It provides the forward and backward propagation functionality same as PyTorch’s EmbeddingBag with only difference of compression.
+`FBTT-Embedding` library provides functionality to compress sparse embedding tables commonly used in machine learning models such as recommendation and natural language processing. The library can be used as a direct replacement to [PyTorch’s EmbeddingBag](https://pytorch.org/docs/stable/generated/torch.nn.EmbeddingBag.html) functionality. It provides the forward and backward propagation functionality same as PyTorch’s `EmbeddingBag` with only difference of compression.
 In addition, our implementation includes a software cache to store a portion of the entries in the embedding tables (or “bag”s) in decompressed format for faster lookup and process removing the need for decompressing and compressing the entries every-time it is accessed during the program execution of training or inference.
 
-Read more at ["TT-Rec: Tensor Train Compression for Deep Learning Recommendation Models"](https://arxiv.org/abs/2101.11714), accepted and to appear in the Proceedings of Conference on Machine Learning and Systems, [MLSys 2021](https://mlsys.org/).
+Read more at ["TT-Rec: Tensor Train Compression for Deep Learning Recommendation Models"](https://proceedings.mlsys.org/paper/2021/file/979d472a84804b9f647bc185a877a8b5-Paper.pdf), in the Proceedings of Conference on Machine Learning and Systems, [MLSys 2021](https://mlsys.org/).
 
 ## Installing FBTT-Embedding
 
 * The implementation was compiled and tested with PyTorch 1.6 and above, with CUDA 10.1.
 * To install the library, run setup.py install
-    In order to get the best performance, specify -gencode for nvcc in the setup.py (line 24). The corresponding compiler settings for each architecture can be found in CUDA Toolkit Documentation, for example
+    In order to get the best performance, specify `-gencode for nvcc` in the `setup.py` (line 24). The corresponding compiler settings for each architecture can be found in CUDA Toolkit Documentation, for example
     Volta https://docs.nvidia.com/cuda/volta-compatibility-guide/index.html
     Pascal https://docs.nvidia.com/cuda/pascal-compatibility-guide/index.html
-* Dependence
-    cub https://nvlabs.github.io/cub/
-* A sample run of the code, run tt_embeddings_benchmark.py. A sample output is shown below
+* Install dependence cub: https://nvlabs.github.io/cub/
+* A sample run of the code, run `tt_embeddings_benchmark.py`. A sample output is shown below
 
 ``` bash
 INFO:root:sparse: True, optimizer: sgd
@@ -38,7 +37,7 @@ INFO:root:TTEmbeddingBag FWD-BWD time/nnz: 0.416 usecs, GFLOPS: 2657.631, BW: 18
 * `use_cache (bool)` — if True, a software cache will be used to store the most-frequently-accessed embedding vectors.
 * `cache_size (int)` — The maximum number of embedding vectors to be stored in the cache.
 * `hashtbl_size (int`) — The maximum number of entries in the hash table for frequency count.
-* `weight_dist (str)` — “uniform”, “naive-uniform”, “approx-uniform”, "normal", “approx-normal”. When using “uniform” or “normal”, the weights of TT cores will be i.i.d from the specified distribution. When using “approx-uniform” or “approx-normal”, the TT cores are initialized in a way that the entries of full embedding table follow the specified distribution.
+* `weight_dist (str)` — `“uniform”`, `“naive-uniform”`, `“approx-uniform”`, `"normal"`, `“approx-normal”`. When using `“uniform”` or `“normal”`, the weights of TT cores will be i.i.d from the specified distribution. When using `“approx-uniform”` or `“approx-normal”`, the TT cores are initialized in a way that the entries of full embedding table follow the specified distribution.
 
 ### Initialization
 The initialization of TT-Emb is similar to Pytorch EmbeddingBag
@@ -61,10 +60,10 @@ When `tt_p_shapes` and `tt_q_shapes are` specified, the product of `tt_p_shapes[
 
 ``` python
 >>> # an Embedding module containing 10 tensors of size 3
->>> embedding_sum *=* TTEmbeddingBag(10, 3, None, None, tt_ranks=[2,2], sparse=False, use_cache=False)
+>>> embedding_sum = TTEmbeddingBag(10, 3, None, None, tt_ranks=[2,2], sparse=False, use_cache=False)
 >>> # a batch of 2 samples of 4 indices each
->>> input *=* torch*.*LongTensor([1,2,4,5,4,3,2,9])
->>> offsets *=* torch*.*LongTensor([0,4])
+>>> input = torch.LongTensor([1,2,4,5,4,3,2,9])
+>>> offsets = torch.LongTensor([0,4])
 >>> embedding_sum(input, offsets)
 tensor([[-0.8861, -5.4350, -0.0523],
 [ 1.1306, -2.5798, -1.0044]])
@@ -80,9 +79,9 @@ tt_emb = TTEmbeddingBag(
         tt_p_shapes=[120, 90, 110],
         tt_q_shapes=[4, 4, 4],
         tt_ranks=[12, 14],
-        *sparse**=True,
+        sparse=True,
         optimizer=OptimType.SGD,
-        learning_rate=0.05,*
+        learning_rate=0.05,
         eps=1.0e-10 #for ADAGRAD only
         use_cache=False,
     )
@@ -104,9 +103,9 @@ tt_emb = TTEmbeddingBag(
         optimizer=OptimType.SGD,
         learning_rate=0.05,
         eps=1.0e-10 #for ADAGRAD only
-        *use_cache**=True,
+        use_cache=True,
         cache_size=1000,
-        hashtbl_size=1000*
+        hashtbl_size=1000
     )
 ```
 
@@ -114,9 +113,9 @@ During forward propagation, the access frequency of embedding vectors will be up
 
 ### TableBatchedTTEmbeddingBag
 
-Apart from TTEmbeddingBag demonstrated above, there's also a TableBatchedTTEmbeddingBag which groups the lookup operation together for multiple TT embedding tables. It can be more efficient than creating multiple instances of TTEmbeddingBags when each of the TTEmbeddingBags has little computation involved.
+Apart from `TTEmbeddingBag` demonstrated above, the library also includes `TableBatchedTTEmbeddingBag` which groups the lookup operation together for multiple TT embedding tables. This can be more efficient than creating multiple instances of `TTEmbeddingBag`s when each of the `TTEmbeddingBag` has little computation involved.
 
-To use that, you just need to initialize it as below
+To use that, you simply need to initialize it as below:
 
 ``` python
 tt_emb = TableBatchedTTEmbeddingBag(
@@ -134,11 +133,11 @@ tt_emb = TableBatchedTTEmbeddingBag(
 
 The above creates 100 TT embedding tables with the same dimensions underlying. The only additional argument that needs to be passed is `num_tables`
 
-Currently there are some limitations to TableBatchedTTEmbeddingBag.
+Currently there are some limitations to `TableBatchedTTEmbeddingBag`.
 
-* The mutiple tables in TableBatchedTTEmbeddingBag must share the same dimensions.
+* The mutiple tables in `TableBatchedTTEmbeddingBag` must share the same dimensions.
 * No support for software cache yet.
-* No support for "approx-uniform" weight init yet.
+* No support for `"approx-uniform"` weight init yet.
 * No support for expanding to full weight yet.
 
 ## License
