@@ -403,7 +403,7 @@ def suggested_tt_shapes(  # noqa C901
         return list(factors[i])
 
     def _roundup(n: int, k: int) -> int:
-        return int(np.ceil(n / 10 ** k)) * 10 ** k
+        return int(np.ceil(n / 10**k)) * 10**k
 
     if allow_round_up:
         weights = []
@@ -623,7 +623,7 @@ class TableBatchedTTEmbeddingBag(torch.nn.Module):
             stddev = np.sqrt(lamb)
             tt_ranks = np.array(self.tt_ranks)
             cr_exponent = -1.0 / (2 * self.tt_ndim)
-            var = np.prod(tt_ranks ** cr_exponent)
+            var = np.prod(tt_ranks**cr_exponent)
             core_stddev = stddev ** (1.0 / self.tt_ndim) * var
             for i in range(self.tt_ndim):
                 torch.nn.init.uniform_(self.tt_cores[i], 0.0, core_stddev)
