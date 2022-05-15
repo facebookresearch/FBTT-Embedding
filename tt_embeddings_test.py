@@ -10,12 +10,12 @@ from typing import List, Tuple
 import hypothesis.strategies as st
 import numpy as np
 import torch
-from hypothesis import Verbosity, given, settings
-from tt_embeddings_ops import OptimType
+from hypothesis import given, settings, Verbosity
 from tt_embeddings_ops import (
-    TTEmbeddingBag,
+    OptimType,
     TableBatchedTTEmbeddingBag,
     tt_matrix_to_full,
+    TTEmbeddingBag,
 )
 
 

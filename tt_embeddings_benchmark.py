@@ -10,8 +10,7 @@ from typing import Callable, List, Optional, Tuple
 import click
 import numpy as np
 import torch
-from tt_embeddings_ops import OptimType
-from tt_embeddings_ops import TTEmbeddingBag
+from tt_embeddings_ops import OptimType, TTEmbeddingBag
 
 
 logging.basicConfig(level=logging.DEBUG)
